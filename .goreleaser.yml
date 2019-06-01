@@ -1,0 +1,42 @@
+builds:
+  -
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - 386
+      - amd64
+      - arm
+      - arm64
+    ignore:
+      - goos: darwin
+        goarch: 386
+      - goos: darwin
+        goarch: arm
+      - goos: darwin
+        goarch: arm64
+
+archives:
+  -
+    name_template: "{{ .ProjectName }}_{{ .Tag }}_{{ .Os }}-{{ .Arch }}"
+    files:
+      - LICENSE
+    wrap_in_directory: true
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Tag }}-CHECKSUMS"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - Merge branch
+    - Merge pull request
+
+release:
+  github:
+    owner: timorunge
+    name: notmuch2maildir
+  draft: true
