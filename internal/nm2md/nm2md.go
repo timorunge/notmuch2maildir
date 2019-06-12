@@ -2,13 +2,22 @@ package nm2md
 
 import (
 	"errors"
+	"math/rand"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/remeh/sizedwaitgroup"
 	"github.com/timorunge/notmuch2maildir/internal/maildir"
 	"github.com/timorunge/notmuch2maildir/internal/notmuch"
+	"github.com/timorunge/notmuch2maildir/internal/progressbar"
 	"github.com/timorunge/notmuch2maildir/internal/utils"
+)
+
+// swgLimit is the maximum amount of go routines that should be created for the
+// creation of symlinks.
+const (
+	swgLimit int = 15
 )
 
 // NM2MD is the base struct for the Notmuch2Maildir
@@ -85,12 +94,18 @@ func (nm2md NM2MD) Execute() error {
 		close(finishedChan)
 	}()
 
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	pb := progressbar.NewProgressBar(progressbar.RefreshInterval, progressbar.Char)
+	go pb.StartWithMsg(ProgressBarMsgs[r.Intn(len(ProgressBarMsgs))])
+
 	select {
 	case err := <-errorChan:
+		pb.FinishWithMsg("\n")
 		return err
 	case <-finishedChan:
 		fileList, outputMaildir := <-fileListChan, <-outputMaildirChan
 		nm2md.Symlink(outputMaildir, fileList)
+		pb.Finish()
 	}
 	return nil
 }
@@ -118,10 +133,6 @@ func (nm2md NM2MD) OutputMaildir() (*maildir.Maildir, error) {
 	}
 	return outputMaildir, nil
 }
-
-// swgLimit is the maximum amount of go routines that should be created for the
-// creation of symlinks.
-const swgLimit = 15
 
 // Symlink is creating all symbolic links from a Notmuch search result to a maildir.
 func (nm2md NM2MD) Symlink(destMaildir *maildir.Maildir, fileList []string) []error {
