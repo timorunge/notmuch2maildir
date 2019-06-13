@@ -105,7 +105,7 @@ func (nm2md NM2MD) Execute() error {
 	case <-finishedChan:
 		fileList, outputMaildir := <-fileListChan, <-outputMaildirChan
 		nm2md.Symlink(outputMaildir, fileList)
-		pb.Finish()
+		pb.FinishWithMsg("\n")
 	}
 	return nil
 }
