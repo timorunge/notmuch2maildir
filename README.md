@@ -24,7 +24,7 @@ Copy the binary in your `$PATH` or call it directly via
 To get the latest version of `notmuch2maildir` just run `go get`.
 
 ```sh
-go get github.com/timorunge/notmuch2maildir
+go get github.com/timorunge/notmuch2maildir/cmd/notmuch2maildir
 ```
 
 If `$GOPATH/bin` is not in your `$PATH` call `notmuch2maildir` directly via

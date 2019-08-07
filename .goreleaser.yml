@@ -17,6 +17,9 @@ builds:
         goarch: arm
       - goos: darwin
         goarch: arm64
+    ldflags:
+      - "-s -w -X main.buildDate={{ .Date }} -X main.gitCommit={{ .FullCommit }} -X main.version={{ .Version }}"
+    main: ./cmd/notmuch2maildir/notmuch2maildir.go
 
 archives:
   -
@@ -26,7 +29,7 @@ archives:
     wrap_in_directory: true
 
 checksum:
-  name_template: "{{ .ProjectName }}_{{ .Tag }}-CHECKSUMS"
+  name_template: "{{ .ProjectName }}_{{ .Tag }}_CHECKSUMS"
 
 changelog:
   sort: asc

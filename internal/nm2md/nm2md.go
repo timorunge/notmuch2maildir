@@ -16,9 +16,7 @@ import (
 
 // swgLimit is the maximum amount of go routines that should be created for the
 // creation of symlinks.
-const (
-	swgLimit int = 15
-)
+const swgLimit int = 15
 
 // NM2MD is the base struct for the Notmuch2Maildir
 type NM2MD struct {
