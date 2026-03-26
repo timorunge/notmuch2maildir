@@ -1,7 +1,7 @@
 # notmuch2maildir
 
 [![Go Report](https://goreportcard.com/badge/github.com/timorunge/notmuch2maildir)](https://goreportcard.com/report/github.com/timorunge/notmuch2maildir)
-[![Build Status](https://travis-ci.org/timorunge/notmuch2maildir.svg?branch=master)](https://travis-ci.org/timorunge/notmuch2maildir)
+[![Build Status](https://github.com/timorunge/notmuch2maildir/actions/workflows/ci.yml/badge.svg)](https://github.com/timorunge/notmuch2maildir/actions/workflows/ci.yml)
 
 `notmuch2maildir` is a simple CLI tool written in Go for searching your mails in
 a MUA like e.g. ([neo](https://neomutt.org/))[mutt](http://mutt.org/) using the
@@ -16,19 +16,16 @@ implementation in Go is - for large search results - significantly faster.
 
 You can use an [official
 release](https://github.com/timorunge/notmuch2maildir/releases) of `notmuch2maildir`.
-The tarballs for each release contain the `notmuch2maildir` CLI applicaton.
+The tarballs for each release contain the `notmuch2maildir` CLI application.
 
 Copy the binary in your `$PATH` or call it directly via
 `$YOURDIR/notmuch2maildir`.
 
-To get the latest version of `notmuch2maildir` just run `go get`.
+To get the latest version of `notmuch2maildir` just run `go install`.
 
 ```sh
-go get github.com/timorunge/notmuch2maildir/cmd/notmuch2maildir
+go install github.com/timorunge/notmuch2maildir/cmd/notmuch2maildir@latest
 ```
-
-If `$GOPATH/bin` is not in your `$PATH` call `notmuch2maildir` directly via
-`$GOPATH/bin/notmuch2maildir`.
 
 ## Usage
 
@@ -41,7 +38,7 @@ Usage:
 
 Application Options:
   -c, --notmuch-config=     Notmuch configuration file which should be used (default: ~/.notmuch-config)
-  -o, --output-dir=         Output directory for storing the Notmuch search results (default: ~/.cache/notmuch/mutt_results)
+  -o, --output-dir=         Output directory for storing the Notmuch search results (default: ~/.cache/notmuch/search_results)
 
 Help Options:
   -h, --help                Show this help message
@@ -66,7 +63,7 @@ Just search Notmuch
 
 Application Options:
   -c, --notmuch-config=     Notmuch configuration file which should be used (default: ~/.notmuch-config)
-  -o, --output-dir=         Output directory for storing the Notmuch search results (default: ~/.cache/notmuch/mutt_results)
+  -o, --output-dir=         Output directory for storing the Notmuch search results (default: ~/.cache/notmuch/search_results)
 
 Help Options:
   -h, --help                Show this help message
@@ -88,7 +85,7 @@ Display a entire mail thread using Notmuch
 
 Application Options:
   -c, --notmuch-config=     Notmuch configuration file which should be used (default: ~/.notmuch-config)
-  -o, --output-dir=         Output directory for storing the Notmuch search results (default: ~/.cache/notmuch/mutt_results)
+  -o, --output-dir=         Output directory for storing the Notmuch search results (default: ~/.cache/notmuch/search_results)
 
 Help Options:
   -h, --help                Show this help message
@@ -99,7 +96,7 @@ Help Options:
 
 ## (neo)mutt configuration
 
-Chose the interactive or the query mode and add the following snippets to your
+Choose the interactive or the query mode and add the following snippets to your
 `muttrc`.
 
 ### Search
@@ -113,7 +110,7 @@ macro index / "<enter-command>unset wait_key<enter><shell-escape>notmuch2maildir
 
 #### Query mode
 ```
-macro index / "<enter-command>unset wait_key<enter><shell-escape>read -p 'Search query: ' query; notmuch2maildir search -q \$query<enter><change-folder-readonly>~/.cache/notmuch/search_results<enter>" \
+macro index / "<enter-command>unset wait_key<enter><shell-escape>read -p 'Search query: ' query; notmuch2maildir search \$query<enter><change-folder-readonly>~/.cache/notmuch/search_results<enter>" \
             "Search mail (using Notmuch)"
 ```
 

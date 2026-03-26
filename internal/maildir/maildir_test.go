@@ -1,20 +1,20 @@
 package maildir
 
 import (
-	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
 var (
-	testMaildir     = NewMaildir(fmt.Sprintf("%s/%s", userCacheDir, "notmuch2maildir-test"), DefaultPerm)
 	userCacheDir, _ = os.UserCacheDir()
+	testMaildir     = NewMaildir(filepath.Join(userCacheDir, "notmuch2maildir-test"), DefaultPerm)
 )
 
 func TestMaildirCreate(t *testing.T) {
 	err := testMaildir.Create()
 	if err != nil {
-		t.Error(
+		t.Fatal(
 			"Tried to create", testMaildir.Path,
 			"but got", err,
 		)

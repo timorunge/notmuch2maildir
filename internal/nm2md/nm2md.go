@@ -24,7 +24,7 @@ type NM2MD struct {
 	SearchQuery        string
 }
 
-// ApplicationOptions describes alll available options for the application.
+// ApplicationOptions describes all available options for the application.
 type ApplicationOptions struct {
 	Debug             bool
 	NotmuchConfigFile string
@@ -134,7 +134,10 @@ func (nm2md NM2MD) OutputMaildir() (*maildir.Maildir, error) {
 
 // Symlink is creating all symbolic links from a Notmuch search result to a maildir.
 func (nm2md NM2MD) Symlink(destMaildir *maildir.Maildir, fileList []string) []error {
-	var errs []error
+	var (
+		errs []error
+		mu   sync.Mutex
+	)
 	var swg sizedwaitgroup.SizedWaitGroup = sizedwaitgroup.New(swgLimit)
 	for _, file := range fileList {
 		swg.Add()
@@ -143,7 +146,9 @@ func (nm2md NM2MD) Symlink(destMaildir *maildir.Maildir, fileList []string) []er
 			err := destMaildir.SymlinkFile(file)
 			if err != nil {
 				utils.PrintDebugErrorMsg(err, nm2md.ApplicationOptions.Debug)
+				mu.Lock()
 				errs = append(errs, err)
+				mu.Unlock()
 			}
 		}(file)
 	}

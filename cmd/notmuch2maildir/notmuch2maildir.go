@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/mail"
 	"os"
 	"regexp"
@@ -115,7 +115,7 @@ func (cmd *ThreadCommand) Execute(args []string) error {
 			return errors.New("Can not stat stdin")
 		}
 		if stdinFile.Size() > 0 {
-			stdin, err := ioutil.ReadAll(os.Stdin)
+			stdin, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				utils.PrintDebugErrorMsg(err, applicationOptions.Debug)
 				return errors.New("Can not read data from stdin")
@@ -180,11 +180,17 @@ func (cmd *VersionCommand) Execute(args []string) error {
 
 // validateOptions is validating the CLI option values.
 func validateOptions() error {
-	_, err := os.Stat(applicationOptions.NotmuchConfigFile)
+	configFile, err := utils.AbsDir(applicationOptions.NotmuchConfigFile)
+	if err != nil {
+		utils.PrintDebugErrorMsg(err, applicationOptions.Debug)
+		return errors.New("Can not resolve notmuch configuration file path")
+	}
+	_, err = os.Stat(configFile)
 	if os.IsNotExist(err) {
 		utils.PrintDebugErrorMsg(err, applicationOptions.Debug)
 		return errors.New("Notmuch configuration file not found")
 	}
+	applicationOptions.NotmuchConfigFile = configFile
 	absDir, err := utils.AbsDir(applicationOptions.OutputDir)
 	if err != nil {
 		utils.PrintDebugErrorMsg(err, applicationOptions.Debug)

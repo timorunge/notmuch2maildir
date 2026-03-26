@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +14,7 @@ const shortUserHomeDirectory string = "~"
 func AbsDir(path string) (string, error) {
 	if strings.HasPrefix(path, shortUserHomeDirectory) {
 		home, err := os.UserHomeDir()
-		dir := fmt.Sprintf("%s/%s", home, strings.TrimPrefix(path, shortUserHomeDirectory))
+		dir := filepath.Join(home, strings.TrimPrefix(path, shortUserHomeDirectory))
 		return filepath.Clean(dir), err
 	}
 	return filepath.Clean(path), nil
