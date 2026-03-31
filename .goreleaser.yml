@@ -1,39 +1,133 @@
 version: 2
 
+project_name: notmuch2maildir
+
 builds:
-  - env:
+  - id: notmuch2maildir
+    main: ./cmd/notmuch2maildir
+    binary: notmuch2maildir
+
+    flags:
+      - -trimpath
+
+    tags:
+      - osusergo
+      - netgo
+
+    ldflags:
+      - -s -w
+      - -buildid=
+      - -X main.version=v{{.Version}}
+
+    env:
       - CGO_ENABLED=0
+
     goos:
-      - darwin
       - linux
+      - darwin
+
     goarch:
       - amd64
-      - arm
       - arm64
-    ignore:
-      - goos: darwin
-        goarch: arm
-    main: ./cmd/notmuch2maildir
-    ldflags:
-      - "-s -w -X main.buildDate={{ .Date }} -X main.gitCommit={{ .FullCommit }} -X main.version={{ .Version }}"
 
 archives:
-  - name_template: "{{ .ProjectName }}_{{ .Tag }}_{{ .Os }}-{{ .Arch }}"
+  - id: notmuch2maildir
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
     files:
-      - LICENSE
+      - README.md
+      - LICENSE*
 
 checksum:
-  name_template: "{{ .ProjectName }}_{{ .Tag }}_checksums.txt"
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+sboms:
+  - artifacts: archive
+    cmd: syft
+    args: ["${artifact}", "--output", "spdx-json=${document}"]
+    documents:
+      - "${artifact}.sbom.json"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
+  use: github
   filters:
     exclude:
-      - "^Merge branch"
-      - "^Merge pull request"
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?:'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^fix(\(.+\))?:'
+      order: 1
+    - title: Performance Improvements
+      regexp: '^perf(\(.+\))?:'
+      order: 2
+    - title: Refactoring
+      regexp: '^refactor(\(.+\))?:'
+      order: 3
+    - title: Others
+      order: 999
 
 release:
   github:
     owner: timorunge
     name: notmuch2maildir
-  draft: true
+
+  draft: false
+  prerelease: auto
+
+  name_template: "{{.ProjectName}} v{{.Version}}"
+
+  header: |
+    ## notmuch2maildir {{.Version}}
+
+    Release date: {{.Date}}
+
+  footer: |
+    ## Installation
+
+    ### Go Install
+    ```bash
+    go install github.com/timorunge/notmuch2maildir/cmd/notmuch2maildir@{{.Tag}}
+    ```
+
+    ### Binary Download
+    Download the appropriate binary for your platform from the assets below.
+
+    ## Verification
+
+    All binaries are checksummed and signed. Verify downloads using:
+    ```bash
+    sha256sum -c checksums.txt
+    cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig checksums.txt
+    ```
+
+    Each archive includes an SPDX SBOM (`.sbom.json`).

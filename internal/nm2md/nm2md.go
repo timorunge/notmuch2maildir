@@ -1,160 +1,137 @@
+// Package nm2md implements notmuch search-to-maildir conversion.
 package nm2md
 
 import (
+	"context"
 	"errors"
-	"math/rand"
+	"fmt"
+	"io"
+	"io/fs"
+	"log/slog"
 	"os"
+	"strings"
 	"sync"
-	"time"
-
-	"github.com/remeh/sizedwaitgroup"
-	"github.com/timorunge/notmuch2maildir/internal/maildir"
-	"github.com/timorunge/notmuch2maildir/internal/notmuch"
-	"github.com/timorunge/notmuch2maildir/internal/progressbar"
-	"github.com/timorunge/notmuch2maildir/internal/utils"
+	"sync/atomic"
 )
 
-// swgLimit is the maximum amount of go routines that should be created for the
-// creation of symlinks.
-const swgLimit int = 15
+const symlinkWorkers = 15
 
-// NM2MD is the base struct for the Notmuch2Maildir
-type NM2MD struct {
-	ApplicationOptions ApplicationOptions
-	SearchQuery        string
-}
-
-// ApplicationOptions describes all available options for the application.
-type ApplicationOptions struct {
-	Debug             bool
-	NotmuchConfigFile string
+// Config holds notmuch and output directory settings.
+type Config struct {
 	NotmuchExecutable string
+	NotmuchConfigFile string
 	OutputDir         string
 }
 
-// NewNM2MD is creating a new NM2MD operation.
-func NewNM2MD(applicationOptions ApplicationOptions, searchQuery string) *NM2MD {
-	return &NM2MD{
-		ApplicationOptions: applicationOptions,
-		SearchQuery:        searchQuery,
-	}
+// Options configures a search or thread operation.
+type Options struct {
+	Config
+	Output io.Writer
+	Logger *slog.Logger
 }
 
-// Execute is doing all the magic.
-func (nm2md NM2MD) Execute() error {
-	if nm2md.SearchQuery == "" {
-		return errors.New("No search query defined")
+func (o Options) logger() *slog.Logger {
+	if o.Logger != nil {
+		return o.Logger
+	}
+	return slog.New(slog.DiscardHandler)
+}
+
+func (o Options) output() io.Writer {
+	if o.Output != nil {
+		return o.Output
+	}
+	return io.Discard
+}
+
+// Search runs a notmuch search and symlinks matching messages into the output maildir.
+func Search(ctx context.Context, opts Options, query string) error {
+	if query == "" {
+		return errors.New("no search query defined")
+	}
+	logger := opts.logger()
+
+	pb := startProgress(opts.output())
+	defer pb.stop()
+
+	files, err := runNotmuch(ctx, opts.NotmuchExecutable, opts.NotmuchConfigFile,
+		"search", []string{"--output=files", query})
+	if err != nil {
+		logger.Debug("notmuch search failed", "error", err)
+		return fmt.Errorf("notmuch returned a non-zero exit status: %w", err)
+	}
+	if len(files) == 0 {
+		return errors.New("notmuch was not able to find any mails matching your search query")
 	}
 
-	_, err := os.Stat(nm2md.ApplicationOptions.NotmuchConfigFile)
-	if os.IsNotExist(err) {
-		utils.PrintDebugErrorMsg(err, nm2md.ApplicationOptions.Debug)
-		return errors.New("Notmuch configuration file not found")
-	}
-
-	errorChan := make(chan error)
-	finishedChan := make(chan bool)
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	outputMaildirChan := make(chan *maildir.Maildir, 1)
-	go func() {
-		defer wg.Done()
-		outputMaildir, err := nm2md.OutputMaildir()
-		if err != nil {
-			errorChan <- err
-		} else {
-			outputMaildirChan <- outputMaildir
-		}
-	}()
-
-	wg.Add(1)
-	fileListChan := make(chan []string, 1)
-	go func() {
-		defer wg.Done()
-		nm := notmuch.NewNotmuch(
-			nm2md.ApplicationOptions.NotmuchExecutable,
-			nm2md.ApplicationOptions.NotmuchConfigFile,
-			"search", []string{"--output=files", nm2md.SearchQuery})
-		fileList, err := nm.Run()
-		if err != nil {
-			utils.PrintDebugErrorMsg(err, nm2md.ApplicationOptions.Debug)
-			errorChan <- errors.New("Notmuch returned a non zero exit status")
-		} else if len(fileList) == 0 {
-			errorChan <- errors.New("Notmuch was not able to find any mails matching your search query")
-		} else {
-			fileListChan <- fileList
-		}
-	}()
-
-	go func() {
-		wg.Wait()
-		close(finishedChan)
-	}()
-
-	r := rand.New(rand.NewSource(time.Now().Unix()))
-	pb := progressbar.NewProgressBar(progressbar.RefreshInterval, progressbar.Char)
-	go pb.StartWithMsg(ProgressBarMsgs[r.Intn(len(ProgressBarMsgs))])
-
-	select {
-	case err := <-errorChan:
-		pb.FinishWithMsg("\n")
+	dir, err := prepareMaildir(opts.OutputDir)
+	if err != nil {
+		logger.Debug("maildir preparation failed", "error", err)
 		return err
-	case <-finishedChan:
-		fileList, outputMaildir := <-fileListChan, <-outputMaildirChan
-		nm2md.Symlink(outputMaildir, fileList)
-		pb.FinishWithMsg("\n")
+	}
+
+	return symlinkAll(logger, dir, files)
+}
+
+// Thread resolves a message-id to its thread and symlinks all thread messages.
+func Thread(ctx context.Context, opts Options, msgID string) error {
+	if msgID == "" {
+		return errors.New("no message-id defined")
+	}
+	logger := opts.logger()
+
+	plainID := strings.Trim(msgID, "<>")
+	threadIDs, err := runNotmuch(ctx, opts.NotmuchExecutable, opts.NotmuchConfigFile,
+		"search", []string{"--output=threads", "id:" + plainID})
+	if err != nil {
+		logger.Debug("notmuch thread lookup failed", "error", err)
+		return fmt.Errorf("notmuch returned a non-zero exit status: %w", err)
+	}
+	if len(threadIDs) == 0 {
+		return errors.New("notmuch was not able to find the mail thread")
+	}
+	if len(threadIDs) > 1 {
+		logger.Debug("multiple threads found for message-id, using first", "count", len(threadIDs), "msgID", msgID)
+	}
+
+	return Search(ctx, opts, threadIDs[0])
+}
+
+func prepareMaildir(outputDir string) (*maildir, error) {
+	dir := &maildir{path: outputDir}
+	_, statErr := os.Stat(outputDir)
+	switch {
+	case errors.Is(statErr, fs.ErrNotExist):
+		if err := dir.create(); err != nil {
+			return nil, fmt.Errorf("cannot create mailbox: %w", err)
+		}
+	case statErr != nil:
+		return nil, fmt.Errorf("cannot access output directory: %w", statErr)
+	default:
+		if err := dir.clear(); err != nil {
+			return nil, fmt.Errorf("cannot clear mailbox: %w", err)
+		}
+	}
+	return dir, nil
+}
+
+func symlinkAll(logger *slog.Logger, dir *maildir, files []string) error {
+	sem := make(chan struct{}, symlinkWorkers)
+	var wg sync.WaitGroup
+	var failures atomic.Int64
+	for _, file := range files {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if err := dir.symlinkFile(file); err != nil {
+				failures.Add(1)
+				logger.Debug("symlink failed", "file", file, "error", err)
+			}
+		})
+	}
+	wg.Wait()
+	if f := failures.Load(); f == int64(len(files)) {
+		return fmt.Errorf("all %d symlink operations failed", len(files))
 	}
 	return nil
-}
-
-// OutputMaildir is creating / cleaning the output maildir.
-func (nm2md NM2MD) OutputMaildir() (*maildir.Maildir, error) {
-	outputDir, err := utils.AbsDir(nm2md.ApplicationOptions.OutputDir)
-	if err != nil {
-		utils.PrintDebugErrorMsg(err, nm2md.ApplicationOptions.Debug)
-		return nil, errors.New("Can not get output directory")
-	}
-	outputMaildir := maildir.NewMaildir(outputDir, maildir.DefaultPerm)
-	if outputMaildir.IsNotExist() {
-		err = outputMaildir.Create()
-		if err != nil {
-			utils.PrintDebugErrorMsg(err, nm2md.ApplicationOptions.Debug)
-			return nil, errors.New("Can not create mailbox for the Notmuch search results")
-		}
-	} else {
-		err = outputMaildir.Clear()
-		if err != nil {
-			utils.PrintDebugErrorMsg(err, nm2md.ApplicationOptions.Debug)
-			return nil, errors.New("Can not clear mailbox for the Notmuch search results")
-		}
-	}
-	return outputMaildir, nil
-}
-
-// Symlink is creating all symbolic links from a Notmuch search result to a maildir.
-func (nm2md NM2MD) Symlink(destMaildir *maildir.Maildir, fileList []string) []error {
-	var (
-		errs []error
-		mu   sync.Mutex
-	)
-	var swg sizedwaitgroup.SizedWaitGroup = sizedwaitgroup.New(swgLimit)
-	for _, file := range fileList {
-		swg.Add()
-		go func(file string) {
-			defer swg.Done()
-			err := destMaildir.SymlinkFile(file)
-			if err != nil {
-				utils.PrintDebugErrorMsg(err, nm2md.ApplicationOptions.Debug)
-				mu.Lock()
-				errs = append(errs, err)
-				mu.Unlock()
-			}
-		}(file)
-	}
-	swg.Wait()
-	if len(errs) > 0 {
-		utils.PrintDebugMsg("Some files can not be linked - this usually happens if the maildir and the notmuch index are not synced. Try to run `notmuch new'", nm2md.ApplicationOptions.Debug)
-	}
-	return errs
 }

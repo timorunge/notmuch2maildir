@@ -1,10 +1,16 @@
+// Terminal progress indicator.
+
 package nm2md
 
-// ProgressBarMsgs is a list of (funny) messages which will be displayed during the run
-// through all goroutines.
-// Most messages have been taken from this gist:
-// https://gist.github.com/meain/6440b706a97d2dd71574769517e7ed32
-var ProgressBarMsgs = [11]string{
+import (
+	"fmt"
+	"io"
+	"math/rand/v2"
+	"sync"
+	"time"
+)
+
+var progressMessages = [...]string{
 	"@todo Insert witty loading message",
 	"Adjusting flux compensator",
 	"Computing the secret to life, the universe, and everything",
@@ -16,4 +22,38 @@ var ProgressBarMsgs = [11]string{
 	"Oh shit, you were waiting for me to do something? Oh okay, well then",
 	"Testing your patience",
 	"Work, work",
+}
+
+type progressBar struct {
+	w       io.Writer
+	once    sync.Once
+	done    chan struct{}
+	stopped chan struct{}
+}
+
+func startProgress(w io.Writer) *progressBar {
+	pb := &progressBar{w: w, done: make(chan struct{}), stopped: make(chan struct{})}
+	_, _ = fmt.Fprint(w, progressMessages[rand.IntN(len(progressMessages))]) //nolint:gosec // cosmetic message selection, not security-sensitive
+	go func() {
+		defer close(pb.stopped)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-pb.done:
+				return
+			case <-ticker.C:
+				_, _ = fmt.Fprint(w, ".")
+			}
+		}
+	}()
+	return pb
+}
+
+func (pb *progressBar) stop() {
+	pb.once.Do(func() {
+		close(pb.done)
+		<-pb.stopped
+		_, _ = fmt.Fprintln(pb.w)
+	})
 }

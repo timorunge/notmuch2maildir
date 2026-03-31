@@ -5,23 +5,48 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+  id-token: write
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  lint-and-test:
+    uses: ./.github/workflows/lint-and-test.yml
+
   release:
+    name: Release
+    needs: [lint-and-test]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout code
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
-        with:
-          go-version: stable
+      - name: Detect Go version
+        id: go-version
+        run: echo "version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
-      - uses: goreleaser/goreleaser-action@v7
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
+          go-version: ${{ steps.go-version.outputs.version }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
           version: latest
           args: release --clean
         env:
