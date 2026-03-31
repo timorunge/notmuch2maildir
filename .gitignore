@@ -1,2 +1,2 @@
-dist
-notmuch2maildir
+/dist/
+/notmuch2maildir

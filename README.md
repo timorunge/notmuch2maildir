@@ -148,10 +148,11 @@ macro index T "<enter-command>unset wait_key<enter><pipe-message>notmuch2maildir
 ## Development
 
 ```bash
-make build    # Build the binary
+make help     # Show all available targets
+make check    # Run all quality gates (fmt, tidy, vet, lint, test)
+make lint     # Run golangci-lint
 make test     # Run tests with race detector
-make check    # All quality gates: fmt + tidy + vet + lint + test
-make help     # See all available targets
+make build    # Build static binary
 ```
 
 ## License
